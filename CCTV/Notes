@@ -1,0 +1,63 @@
+Reconnaissance
+-started nmap 
+  --Port 80(HTTP) and port 22(SSH) active 
+
+{
+  sudo nano /etc/hosts (incase the site failes to load,it is used for mapping cctv.htb to the ip )
+  added ip and domain name
+}
+Enumeration 
+-used browser to go into website
+-checking the functionality 
+-has a button "Get a Quote"
+  --intial observation:seems to redirect to an original google mail website with https connection(howerver a box appears before this)
+-there is a staff login 
+open -a warning is provided by the browser that "the connection is not secure .Credentials entered could be compromised"
+  --intial observation:most probably our attack vector
+just typed in
+--username:admin
+--password:admin
+--logged in 
+--seem to have complete access to admin
+--lots of options but most seems dummy
+--found api 
+---admin,mark and super admin(no idea what to do with it )
+---found logs(one log has /usr/share/zoneminder/www/includes/actions/options.php,another has 	/usr/share/zoneminder/www/includes/auth.php)
+----too many things ,probably many rabbit holes .
+--performing dir enumeration using gobuster
+-- no idea what to do -possibly have to do vertical/horizontal escalation 
+from the path zoneminder is the software -has many known vuln 
+
+
+  
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+HYPERTEXT PROTOCOL (HTTP,PORT 80)
+HTTP is the protocol used to load websites.
+Your browser sends a request to:
+       IP of the server
+       Port 80
+Not encrypted 
+Data is sent in plain text
+Vulnerable to attacks (MITM, sniffing)
+
+SECURE SHELL(SSH PORT 22)
+SSH lets you securely connect to another computer remotely.
+  ssh user@192.168.1.10
+Encrypted communication 
+Used by:
+System admins
+Hackers / pentesters
+Gives command-line access to another machine
